@@ -1,0 +1,17 @@
+---
+- name: Setup WordPress Environments
+  hosts: nodes
+  become: true
+  tasks:
+    # if ubuntu or debian based machines do these tasks
+    - name: Install WordPress dependencies (LAMP stack)
+      apt:
+        name: "{{ item }}"
+        state: latest
+      loop:
+        - php
+        - php-mysql
+        - mysql-server
+        - nginx
+        - apache2
+        - wordpress
