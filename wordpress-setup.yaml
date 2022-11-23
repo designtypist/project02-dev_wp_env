@@ -1,17 +1,95 @@
 ---
-- name: Setup WordPress Environments
+- name: Setup LAMP environment with complete WordPress install
   hosts: nodes
-  become: true
+  become: yes
+  collections:
+  - community.mysql
   tasks:
-    # if ubuntu or debian based machines do these tasks
-    - name: Install WordPress dependencies (LAMP stack)
+    - name: install wordpress dependencies (lamp stack)
       apt:
         name: "{{ item }}"
-        state: latest
+        state: present
+        update_cache: yes
+      loop: [ 'apache2', 'mariadb-server', 'python3-pymysql', 'php', 'php-mysql', 'libapache2-mod-php' ]
+    
+    - name: install php extensions
+      apt:
+        name: "{{ item }}"
+        update_cache: yes
+        state: present
+      loop: [ 'php-curl', 'php-gd', 'php-mbstring', 'php-xml', 'php-xmlrpc', 'php-soap', 'php-intl', 'php-zip' ]
+
+    - name: ensure mysql and apache2 service is enabled to run on startup
+      service:
+        name: "{{ item }}"
+        state: started
+        enabled: true
       loop:
-        - php
-        - php-mysql
-        - mysql-server
-        - nginx
+        - mysql
         - apache2
-        - wordpress
+
+    - name: if default index.html exists
+      stat:
+        path: /var/www/html/index.html
+      register: default_index
+ 
+    - name: delete default index.html file
+      file:
+        path: /var/www/html/index.html
+        state: absent
+      when: default_index.stat.exists
+
+    - name: create an admin wordpress mysql database username
+      mysql_user: 
+        check_implicit_admin: yes
+        login_unix_socket: /var/run/mysqld/mysqld.sock 
+        host: localhost
+        name: wordpress
+        password: 'wordpress123'
+        priv: '*.*:ALL,GRANT'
+      notify: restart mysql
+
+    - name: create new database for wordpress
+      mysql_db:
+        check_implicit_admin: yes
+        name: wordpress_db
+        login_user: wordpress
+        login_password: 'wordpress123'
+        state: present
+      notify: restart mysql
+
+    - name: install and work with wordpress
+      include_role:
+        name: oefenweb.wordpress
+      vars:
+        wordpress_installs:
+          - name: wordpress
+            dbname: wordpress_db
+            dbuser: wordpress
+            dbpass: 'wordpress123'
+            dbhost: localhost
+            path: /var/www/html
+            url: http://localhost
+            title: wordpress
+            admin_name: admin
+            admin_email: root@localhost.local
+            admin_password: 'admin'
+            themes:
+              - name: twentythirteen
+                activate: true
+            plugins: []
+            options: []
+
+    - name: reboot machine
+      reboot:
+
+  handlers:
+    - name: restart apache2
+      service:
+        name: apache2
+        state: restarted
+    - name: restart mysql
+      service:
+        name: mysql
+        state: restarted
+
