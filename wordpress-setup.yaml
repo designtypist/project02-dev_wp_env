@@ -79,11 +79,11 @@
                 activate: true
             plugins: []
             options: []
-
-    - name: reboot machine
-      reboot:
+        notify: reboot machine
 
   handlers:
+    - name: reboot machine
+      reboot:
     - name: restart apache2
       service:
         name: apache2
