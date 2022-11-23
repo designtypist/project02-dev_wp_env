@@ -5,7 +5,6 @@
 Install Ansible Galaxy collection and role for MySQL and WordPress
 ```
 ansible-galaxy collection install community.mysql 
-ansible-galaxy collection install geerlingguy.php_roles
 ansible-galaxy install oefenweb.wordpress
 ```
 
