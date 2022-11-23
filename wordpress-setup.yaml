@@ -4,6 +4,26 @@
   become: yes
   collections:
   - community.mysql
+  vars:
+    # Server Settings
+    hostname: "localhost"
+    domain_url: "http://localhost"
+
+    # PHP Settings
+    php_modules: [ 'php-curl', 'php-gd', 'php-mbstring', 'php-xml', 'php-xmlrpc', 'php-soap', 'php-intl', 'php-zip' ]
+
+    # MySQL Settings
+    mysql_db: "wordpress_db"
+    mysql_user: "wordpress"
+    mysql_password: "wordpress123"
+    mysql_root_password: "root123"
+
+    # WordPress Settings
+    wp_title: "wordpress"
+    wp_admin_user: "admin"
+    wp_admin_email: "admin@localhost.local"
+    wp_admin_password: "admin"
+
   tasks:
     - name: install wordpress dependencies (lamp stack)
       apt:
@@ -11,13 +31,16 @@
         state: present
         update_cache: yes
       loop: [ 'apache2', 'mariadb-server', 'python3-pymysql', 'php', 'php-mysql', 'libapache2-mod-php' ]
-    
+      tags: [ apache, php, mysql, install ]
+
     - name: install php extensions
       apt:
         name: "{{ item }}"
         update_cache: yes
         state: present
-      loop: [ 'php-curl', 'php-gd', 'php-mbstring', 'php-xml', 'php-xmlrpc', 'php-soap', 'php-intl', 'php-zip' ]
+      loop: "{{ php_modules }}"
+      notify: restart apache2
+      tags: [ php, install ]
 
     - name: ensure mysql and apache2 service is enabled to run on startup
       service:
@@ -27,36 +50,49 @@
       loop:
         - mysql
         - apache2
+      tags: [ apache, mysql, services ]
 
     - name: if default index.html exists
       stat:
         path: /var/www/html/index.html
       register: default_index
- 
+      tags: [ apache, file ]
+
     - name: delete default index.html file
       file:
         path: /var/www/html/index.html
         state: absent
       when: default_index.stat.exists
+      tags: [ apache, file ]
 
-    - name: create an admin wordpress mysql database username
-      mysql_user: 
+    - name: Set the root password
+      mysql_user:
         check_implicit_admin: yes
-        login_unix_socket: /var/run/mysqld/mysqld.sock 
+        login_unix_socket: /var/run/mysqld/mysqld.sock
         host: localhost
-        name: wordpress
-        password: 'wordpress123'
-        priv: '*.*:ALL,GRANT'
+        name: root
+        password: "{{ mysql_root_password }}"
       notify: restart mysql
+      tags: [ mysql, mysql-root ]
 
     - name: create new database for wordpress
       mysql_db:
-        check_implicit_admin: yes
-        name: wordpress_db
-        login_user: wordpress
-        login_password: 'wordpress123'
+        name: "{{ mysql_db }}"
         state: present
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+      tags: [ mysql ]
+
+    - name: create a mysql database username for wordpress
+      mysql_user: 
+        name: "{{ mysql_user }}"
+        password: "{{ mysql_password }}"
+        priv: '{{ mysql_db }}.*:ALL,GRANT'
+        state: present
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
       notify: restart mysql
+      tags: [ mysql ]
 
     - name: install and work with wordpress
       include_role:
@@ -64,26 +100,24 @@
       vars:
         wordpress_installs:
           - name: wordpress
-            dbname: wordpress_db
-            dbuser: wordpress
-            dbpass: 'wordpress123'
-            dbhost: localhost
+            dbname: "{{ mysql_db }}"
+            dbuser: "{{ mysql_user }}"
+            dbpass: "{{ mysql_password }}"
+            dbhost: "{{ hostname }}"
             path: /var/www/html
-            url: http://localhost
-            title: wordpress
-            admin_name: admin
-            admin_email: root@localhost.local
-            admin_password: 'admin'
+            url: "{{ domain_url }}"
+            title: "{{ wp_title }}"
+            admin_name: "{{ wp_admin_user }}"
+            admin_email: "{{ wp_admin_email }}"
+            admin_password: "{{ wp_admin_password }}"
             themes:
               - name: twentythirteen
                 activate: true
             plugins: []
             options: []
-        notify: reboot machine
+      tags: [ wordpress, install ]
 
   handlers:
-    - name: reboot machine
-      reboot:
     - name: restart apache2
       service:
         name: apache2
@@ -92,4 +126,3 @@
       service:
         name: mysql
         state: restarted
-
